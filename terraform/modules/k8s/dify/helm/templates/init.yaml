@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: init
+  labels:
+    app: init
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: init
+  template:
+    metadata:
+      labels:
+        app: init
+    nodeSelector:
+      eks.amazonaws.com/compute-type: {{ .Values.computeType }}
+    spec:
+      containers:
+      # - name: maintenance
+      #   image: ubuntu:latest
+      #   imagePullPolicy: {{ .Values.image.pullPolicy }}
+      #   command: [ "/bin/sh", "-c", "--", "while true; do sleep 30; done;" ]
+      - name: init-postgres
+        image: postgres:16
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USERNAME;
+            do echo "Waiting for PostgreSQL..."; sleep 2; done;
+            
+            # dify_plugin データベースの存在チェック
+            DB_EXISTS=$(PGPASSWORD="$DB_PASSWORD" psql -h $DB_HOST -U $DB_USERNAME -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'dify_plugin'")
+            
+            # データベースが存在しない場合のみ作成し、権限を付与
+            if [ "$DB_EXISTS" != "1" ]; then
+                echo "Creating database dify_plugin..."
+                PGPASSWORD="$DB_PASSWORD" psql -h $DB_HOST -U $DB_USERNAME -d postgres -c "CREATE DATABASE dify_plugin;"
+                echo "Granting privileges to dify user..."
+                PGPASSWORD="$DB_PASSWORD" psql -h $DB_HOST -U $DB_USERNAME -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE dify_plugin TO dify;"
+            else
+                echo "Database dify_plugin already exists. Skipping creation and privilege granting."
+            fi
+            
+            # vector 拡張機能を有効化（既に存在する場合はスキップ）
+            PGPASSWORD="$DB_PASSWORD" psql -h $DB_HOST -U $DB_USERNAME -d $DB_DATABASE -c "CREATE EXTENSION IF NOT EXISTS vector;"
+            
+            exit 0
+
+        env:
+          - name: DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: db_username
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: db_password
+          - name: DB_HOST
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: db_endpoint
+          - name: DB_PORT
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: db_port
+          - name: DB_DATABASE
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: db_name

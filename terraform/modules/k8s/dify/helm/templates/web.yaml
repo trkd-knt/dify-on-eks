@@ -1,0 +1,109 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dify-web
+  namespace: dify
+  labels:
+    app: dify-web
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: dify-web
+  template:
+    metadata:
+      labels:
+        app: dify-web
+    nodeSelector:
+      eks.amazonaws.com/compute-type: {{ .Values.computeType }}
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      automountServiceAccountToken: false
+      containers:
+        - name: dify-web
+          image: {{ .Values.image.repositories.web }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: DEPLOY_ENV
+              value: 'DEVELOPMENT'
+            - name: NEXT_PUBLIC_EDITION
+              value: 'SELF_HOSTED'
+
+
+            # NEXT_PUBLIC_API_PREFIX = $CONSOLE_API_URL/console/api
+            # NEXT_PUBLIC_PUBLIC_API_PREFIX = $CONSOLE_API_URL/api
+            {{- if .Values.domains.console }}
+            - name: CONSOLE_API_URL
+              value: 'https://{{ .Values.domains.console }}.{{ .Values.domains.siteDomain }}'
+            {{- else }}
+            - name: CONSOLE_API_URL
+              value: 'http://{{ .Values.domains.siteDomain }}'
+            {{- end }}
+
+            - name: MARKETPLACE_API_URL
+              value: 'https://marketplace.dify.ai'
+            - name: MARKETPLACE_URL
+              value: 'https://marketplace.dify.ai'
+
+            # SENTRY
+            - name: SENTRY_DSN
+              value: ''
+            
+            # Disable Next.js Telemetry 
+            - name: NEXT_TELEMETRY_DISABLED
+              value: '1'
+            # Disable Upload Image as WebApp icon default is false
+            - name: NEXT_PUBLIC_UPLOAD_IMAGE_AS_ICON
+              value: 'false'
+
+            # The timeout for the text generation in millisecond
+            - name: TEXT_GENERATION_TIMEOUT_MS
+              value: '60000'
+
+            # CSP https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+            - name: CSP_WHITELIST
+              value: ''
+
+            # Github Access Token, used for invoking Github API
+            - name: NEXT_PUBLIC_GITHUB_ACCESS_TOKEN
+              value: ''
+            
+            # The maximum number of top-k value for RAG.
+            - name: TOP_K_MAX_VALUE
+              value: '10'
+
+            # The maximum number of tokens for segmentation
+            - name: INDEXING_MAX_SEGMENTATION_TOKENS_LENGTH
+              value: '4000'
+
+            # Maximum loop count in the workflow
+            - name: NEXT_PUBLIC_LOOP_NODE_MAX_COUNT
+              value: '100'
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          ports:
+            - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-web
+  namespace: dify
+spec:
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: dify-web
+  type: ClusterIP
+  selector:
+    app: dify-web
+

@@ -1,0 +1,508 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dify-api
+  labels:
+    app: dify-api
+    app.kubernetes.io/instance: dify-api
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  minReadySeconds: 10
+  serviceName: dify-api
+  selector:
+    matchLabels:
+      app: dify-api
+  template:
+    metadata:
+      labels:
+        app: dify-api
+    nodeSelector:
+      eks.amazonaws.com/compute-type: {{ .Values.computeType }}
+    spec:
+      serviceAccountName: dify-api
+      # automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: dify-api
+          image: {{ .Values.image.repositories.api }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: MODE
+              value: api
+            - name: DEPLOY_ENV
+              value: 'PRODUCTION'
+
+            # securely signing the session cookie
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-credentials
+                  key: secret_key
+
+            # Console API base URL
+            {{- if .Values.domains.console }}
+            - name: CONSOLE_API_URL
+              value: 'https://{{ .Values.domains.console }}.{{ .Values.domains.siteDomain }}'
+            - name: CONSOLE_WEB_URL
+              value: 'https://{{ .Values.domains.console }}.{{ .Values.domains.siteDomain }}'
+            {{- else }}
+            - name: CONSOLE_API_URL
+              value: 'http://{{ .Values.domains.siteDomain }}'
+            - name: CONSOLE_WEB_URL
+              value: 'http://{{ .Values.domains.siteDomain }}'
+            {{- end }}
+
+            {{- if .Values.domains.service }}
+            # Service API base URL
+            - name: SERVICE_API_URL
+              value: 'https://{{ .Values.domains.service }}.{{ .Values.domains.siteDomain }}'
+            
+            - name: APP_API_URL
+              value: 'https://{{ .Values.domains.service }}.{{ .Values.domains.siteDomain }}'
+
+            # Web APP base URL
+            - name: APP_WEB_URL
+              value: 'https://{{ .Values.domains.service }}.{{ .Values.domains.siteDomain }}'
+
+            # Files URL
+            - name: FILES_URL
+              value: 'https://{{ .Values.domains.service }}.{{ .Values.domains.siteDomain }}'
+            {{- else }}
+            # Service API base URL
+            - name: SERVICE_API_URL
+              value: 'http://{{ .Values.domains.siteDomain }}'
+
+            - name: APP_API_URL
+              value: 'https://{{ .Values.domains.siteDomain }}'
+
+            # Web APP base URL
+            - name: APP_WEB_URL
+              value: 'http://{{ .Values.domains.siteDomain }}'
+
+            # Files URL
+            - name: FILES_URL
+              value: 'http://{{ .Values.domains.siteDomain }}'
+            {{- end }}
+
+            - name: CHECK_UPDATE_URL
+              value: 'https://updates.dify.ai'
+            
+            - name: OPENAI_API_BASE
+              value: 'https://api.openai.com/v1'
+
+            # The time in seconds after the signature is rejected
+            - name: FILES_ACCESS_TIMEOUT
+              value: '300'
+
+            # Access token expiration time in minutes
+            - name: ACCESS_TOKEN_EXPIRE_MINUTES
+              value: '60'
+
+            # Refresh token expiration time in days
+            - name: REFRESH_TOKEN_EXPIRE_DAYS
+              value: '30'
+
+            # celery configuration
+            - name: CELERY_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: celery_broker_url
+
+            # redis configuration
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: redis_endpoint
+            - name: REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: redis_port
+            - name: REDIS_USERNAME
+              value: ''
+            - name: REDIS_PASSWORD
+              value: ''
+            - name: REDIS_USE_SSL
+              value: 'true'
+            - name: REDIS_DB
+              value: '0'
+
+            # PostgreSQL database configuration
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_password
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_endpoint
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_port
+            - name: DB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_name
+            
+            - name: SQLALCHEMY_POOL_SIZE
+              value: '30'
+            - name: SQLALCHEMY_POOL_RECYCLE
+              value: '3600'
+            - name: SQLALCHEMY_ECHO
+              value: 'true'
+
+            - name: POSTGRES_MAX_CONNECTIONS
+              value: '100'
+
+            - name: POSTGRES_SHARED_BUFFERS
+              value: '128MB'
+
+            - name: POSTGRES_WORK_MEM
+              value: '4MB'
+
+            - name: POSTGRES_MAINTENANCE_WORK_MEM
+              value: '64MB'
+
+            - name: POSTGRES_EFFECTIVE_CACHE_SIZE
+              value: '4096MB'
+
+            # Storage configuration
+            - name: STORAGE_TYPE
+              value: 's3'
+            - name: S3_USE_AWS_MANAGED_IAM
+              value: 'true'
+            - name: S3_ENDPOINT
+              value: 'https://{{ .Values.volume.s3Bucket }}.{{ .Values.volume.awsRegion }}.amazonaws.com'
+            - name: S3_BUCKET_NAME
+              value: '{{ .Values.volume.s3Bucket }}'
+            - name: S3_REGION
+              value: '{{ .Values.volume.awsRegion }}'
+
+            # Vector database configuration
+            - name: VECTOR_STORE
+              value: pgvector
+
+            # PGVector configuration
+            - name: PGVECTOR_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_endpoint
+            - name: PGVECTOR_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_port
+            - name: PGVECTOR_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_username
+            - name: PGVECTOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_password
+            - name: PGVECTOR_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_name
+            - name: PGVECTOR_MIN_CONNECTION
+              value: '1'
+            - name: PGVECTOR_MAX_CONNECTION
+              value: '5'
+            - name: PGVECTOR_PG_BIGM
+              value: 'false'
+
+
+            # Upload configuration
+            - name: UPLOAD_FILE_SIZE_LIMIT
+              value: '15'
+            - name: UPLOAD_FILE_BATCH_LIMIT
+              value: '5'
+            - name: UPLOAD_IMAGE_FILE_SIZE_LIMIT
+              value: '10'
+            - name: UPLOAD_VIDEO_FILE_SIZE_LIMIT
+              value: '100'
+            - name: UPLOAD_AUDIO_FILE_SIZE_LIMIT
+              value: '50'
+
+            # Model configuration
+            - name: MULTIMODAL_SEND_FORMAT
+              value: 'base64'
+            - name: PROMPT_GENERATION_MAX_TOKENS
+              value: '512'
+            - name: CODE_GENERATION_MAX_TOKENS
+              value: '1024'
+
+            # # Mail configuration
+            # - name: MAIL_TYPE
+            #   value: 'smtp'
+            # - name: MAIL_DEFAULT_SEND_FROM
+            #   value: 'no-reply <no-reply@dify.ai>'
+            # # smtp configuration
+            # - name: SMTP_SERVER
+            #   value: ''
+            # - name: SMTP_PORT
+            #   value: ''
+            # - name: SMTP_USERNAME
+            #   value: ''
+            # - name: SMTP_PASSWORD
+            #   value: ''
+            # - name: SMTP_USE_TLS
+            #   value: ''
+            # - name: SMTP_OPPORTUNISTIC_TLS
+            #   value: ''
+
+            # DEBUG
+            - name: DEBUG
+              value: 'true'
+            - name: FLASK_DEBUG
+              value: 'true'
+            - name: SQLALCHEMY_ECHO
+              value: 'true'
+
+            # Notion import configuration,
+            - name: NOTION_INTEGRATION_TYPE
+              value: public
+            - name: NOTION_CLIENT_SECRET
+              value: you-client-secret
+            - name: NOTION_CLIENT_ID
+              value: you-client-id
+            - name: NOTION_INTERNAL_SECRET
+              value: you-internal-secret
+
+            - name: ETL_TYPE
+              value: dify
+            - name: UNSTRUCTURED_API_URL
+              value: ''
+            - name: UNSTRUCTURED_API_KEY
+              value: ''
+            - name: SCARF_NO_ANALYTICS
+              value: 'true'
+
+            # SSRF configuration
+            - name: SSRF_PROXY_HTTP_URL
+              value: ''
+            - name: SSRF_PROXY_HTTPS_URL
+              value: ''
+            - name: SSRF_DEFAULT_MAX_RETRIES
+              value: '3'
+            - name: SSRF_DEFAULT_TIME_OUT
+              value: '5'
+            - name: SSRF_DEFAULT_CONNECT_TIME_OUT
+              value: '5'
+            - name: SSRF_DEFAULT_READ_TIME_OUT
+              value: '5'
+            - name: SSRF_DEFAULT_WRITE_TIME_OUT
+              value: '5'
+
+            - name: BATCH_UPLOAD_LIMIT
+              value: '10'
+            - name: KEYWORD_DATA_SOURCE_TYPE
+              value: 'database'
+
+            # Workflow file upload limit
+            - name: WORKFLOW_FILE_UPLOAD_LIMIT
+              value: '10'
+
+            # code execute configuration
+            - name: CODE_EXECUTION_ENDPOINT
+              value: http://dify-sandbox:8194
+            - name: CODE_EXECUTION_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-credentials
+                  key: code_execute_key
+            - name: CODE_MAX_NUMBER
+              value: '9223372036854775807'
+            - name: CODE_MIN_NUMBER
+              value: '-9223372036854775808'
+            - name: CODE_MAX_STRING_LENGTH
+              value: '80000'
+            - name: TEMPLATE_TRANSFORM_MAX_LENGTH
+              value: '80000'
+            - name: CODE_MAX_STRING_ARRAY_LENGTH
+              value: '30'
+            - name: CODE_MAX_OBJECT_ARRAY_LENGTH
+              value: '30'
+            - name: CODE_MAX_NUMBER_ARRAY_LENGTH
+              value: '1000'
+            - name: CODE_MAX_DEPTH
+              value: '5'
+            - name: CODE_MAX_PRECISION
+              value: '20'
+
+            # API Tool configuration
+            - name: API_TOOL_DEFAULT_CONNECT_TIMEOUT
+              value: '10'
+            - name: API_TOOL_DEFAULT_READ_TIMEOUT
+              value: '60'
+
+            # HTTP Node configuration
+            - name: HTTP_REQUEST_MAX_CONNECT_TIMEOUT
+              value: '300'
+            - name: HTTP_REQUEST_MAX_READ_TIMEOUT
+              value: '600'
+            - name: HTTP_REQUEST_MAX_WRITE_TIMEOUT
+              value: '600'
+            - name: HTTP_REQUEST_NODE_MAX_BINARY_SIZE
+              value: '10485760'
+            - name: HTTP_REQUEST_NODE_MAX_TEXT_SIZE
+              value: '1048576'
+
+            # Respect X-* headers to redirect clients
+            - name: RESPECT_XFORWARD_HEADERS_ENABLED
+              value: 'false'
+
+            # Log configuration
+            - name: LOG_LEVEL
+              value: 'INFO'
+            - name: LOG_FILE
+              value: ''
+            - name: LOG_FILE_MAX_SIZE
+              value: '20'
+            - name: LOG_FILE_BACKUP_COUNT
+              value: '5'
+            - name: LOG_DATEFORMAT
+              value: '%Y-%m-%d %H:%M:%S'
+            - name: LOG_TZ
+              value: 'Asia/Tokyo'
+            - name: LOG_FORMAT
+              value: '%(asctime)s,%(msecs)d %(levelname)-2s [%(filename)s:%(lineno)d] %(req_id)s %(message)s'
+
+            # Indexing configuration
+            - name: INDEXING_MAX_SEGMENTATION_TOKENS_LENGTH
+              value: '4000'
+
+            # Workflow runtime configuration
+            - name: WORKFLOW_MAX_EXECUTION_STEPS
+              value: '500'
+            - name: WORKFLOW_MAX_EXECUTION_TIME
+              value: '1200'
+            - name: WORKFLOW_CALL_MAX_DEPTH
+              value: '5'
+            - name: WORKFLOW_PARALLEL_DEPTH_LIMIT
+              value: '3'
+            - name: MAX_VARIABLE_SIZE
+              value: '204800'
+            - name: WORKFLOW_FILE_UPLOAD_LIMIT
+              value: '10'
+            - name: LOOP_NODE_MAX_COUNT
+              value: '100'
+            - name: MAX_TOOLS_NUM
+              value: '10'
+
+            # App configuration
+            - name: APP_MAX_EXECUTION_TIME
+              value: '1200'
+            - name: APP_MAX_ACTIVE_REQUESTS
+              value: '0'
+    
+            # Celery beat configuration
+            - name: CELERY_BEAT_SCHEDULER_TIME
+              value: '1'
+
+            # Plugin configuration
+            - name: PLUGIN_DAEMON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-credentials
+                  key: api_inner_api_key
+            - name: PLUGIN_DAEMON_URL
+              value: 'http://dify-plugin:5002'
+            - name: PLUGIN_REMOTE_INSTALL_PORT
+              value: '5003'
+            - name: PLUGIN_REMOTE_INSTALL_HOST
+              value: 'dify-plugin'
+            - name: PLUGIN_MAX_PACKAGE_SIZE
+              value: '15728640'
+            - name: INNER_API_KEY_FOR_PLUGIN
+              valueFrom:
+                secretKeyRef:
+                  name: dify-credentials
+                  key: api_inner_api_key
+
+            # Marketplace configuration
+            - name: MARKETPLACE_ENABLED
+              value: 'true'
+            - name: MARKETPLACE_API_URL
+              value: 'https://marketplace.dify.ai'
+
+            # Endpoint configuration
+            - name: ENDPOINT_URL_TEMPLATE
+              value: 'http://localhost:5002/e/{hook_id}'
+
+            - name: RESET_PASSWORD_TOKEN_EXPIRY_MINUTES
+              value: '5'
+            - name: CREATE_TIDB_SERVICE_JOB_ENABLED
+              value: 'false'
+            - name: MAX_SUBMIT_COUNT
+              value: '100'
+            - name: LOGIN_LOCKOUT_DURATION
+              value: '3600'
+
+            - name: INIT_PASSWORD
+              value: password
+
+            - name: MIGRATION_ENABLED
+              value: 'true'
+
+            # - name: WEB_API_CORS_ALLOW_ORIGINS
+            #   value: '*'
+            # - name: CONSOLE_CORS_ALLOW_ORIGINS
+            #   value: '*'
+            # - name: STORAGE_LOCAL_PATH
+            #   value: /app/api/storage
+            # # uncommect to enable SSRF
+            # # - name: SSRF_PROXY_HTTP_URL
+            # #   value: 'http://ssrf-proxy:3128'
+            # # - name: SSRF_PROXY_HTTPS_URL
+            # #   value: 'http://ssrf-proxy:3128'
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          ports:
+            - containerPort: 5001
+          volumeMounts:
+            - name: dify-api-storage
+              mountPath: /app/api/storage
+      volumes:
+        - name: dify-api-storage
+          persistentVolumeClaim:
+            claimName: dify-api-storage-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-api
+  namespace: dify
+spec:
+  ports:
+    - port: 5001
+      targetPort: 5001
+      protocol: TCP
+      name: dify-api
+  type: ClusterIP
+  selector:
+    app: dify-api

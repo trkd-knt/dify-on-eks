@@ -1,0 +1,152 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dify-plugin
+  namespace: dify
+  labels:
+    app: dify-plugin
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: dify-plugin
+  template:
+    metadata:
+      labels:
+        app: dify-plugin
+    nodeSelector:
+      eks.amazonaws.com/compute-type: {{ .Values.computeType }}
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: dify-plugin
+          image: {{ .Values.image.repositories.plugin }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: DB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: plugin_db_name
+
+            - name: SERVER_PORT
+              value: '5002'
+
+            - name: SERVER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-credentials
+                  key: api_inner_api_key
+
+            - name: MAX_PLUGIN_PACKAGE_SIZE
+              value: '52428800'
+
+            - name: PPROF_ENABLED
+              value: 'false'
+
+            - name: DIFY_INNER_API_URL
+              value: 'http://dify-api:5001'
+            - name: DIFY_INNER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-credentials
+                  key: api_inner_api_key
+
+            - name: PLUGIN_REMOTE_INSTALLING_HOST
+              value: 'dify-plugin'
+            - name: PLUGIN_REMOTE_INSTALLING_PORT
+              value: '5003'
+
+            - name: PLUGIN_WORKING_PATH
+              value: '/app/storage/cwd'
+
+            - name: FORCE_VERIFYING_SIGNATURE
+              value: 'true'
+
+            - name: PYTHON_ENV_INIT_TIMEOUT
+              value: '120'
+            - name: PLUGIN_MAX_EXECUTION_TIMEOUT
+              value: '600'
+            # - name: PIP_MIRROR_URL
+            #   value: ''
+            - name: DEPLOY_ENV
+              value: 'PRODUCTION'
+
+            # securely signing the session cookie
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-credentials
+                  key: secret_key
+
+            # redis configuration
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: redis_endpoint
+            - name: REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: redis_port
+            - name: REDIS_USERNAME
+              value: ''
+            - name: REDIS_PASSWORD
+              value: ''
+            - name: REDIS_USE_SSL
+              value: 'true'
+            - name: REDIS_DB
+              value: '0'
+
+            # PostgreSQL database configuration
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_password
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_endpoint
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: db_port
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          ports:
+            - containerPort: 5003
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-plugin
+  namespace: dify
+spec:
+  ports:
+    - port: 5003
+      targetPort: 5003
+      protocol: TCP
+      name: dify-plugin
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: dify-plugin

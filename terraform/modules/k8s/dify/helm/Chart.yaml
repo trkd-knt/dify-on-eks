@@ -1,0 +1,7 @@
+apiVersion: v2
+name: dify
+description: A Helm chart for deploying Dify on AWS EKS
+type: application
+version: 1.0.0
+appVersion: latest
+dependencies: []

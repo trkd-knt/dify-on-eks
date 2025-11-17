@@ -1,0 +1,23 @@
+replicaCount: 1
+
+computeType: ec2
+
+image:
+  repositories:
+    api: langgenius/dify-api:1.0.1
+    worker: langgenius/dify-api:1.0.1
+    sandbox: langgenius/dify-sandbox:0.2.10
+    web: langgenius/dify-web:1.0.1
+    plugin: langgenius/dify-plugin-daemon:0.0.4-local
+  pullPolicy: IfNotPresent
+
+domains:
+  siteDomain: localhost
+  console: 
+  service: 
+  certArn: xxxx
+
+volume:
+  s3Bucket: my-s3-bucket
+  storageSize: 1000Gi
+  awsRegion: ap-northeast-1

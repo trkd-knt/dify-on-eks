@@ -1,0 +1,73 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dify-sandbox
+  namespace: dify
+  labels:
+    app: dify-sandbox
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: dify-sandbox
+  template:
+    metadata:
+      labels:
+        app: dify-sandbox
+    nodeSelector:
+      eks.amazonaws.com/compute-type: {{ .Values.computeType }}
+    spec:
+      serviceAccountName: dify-api
+      # automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: dify-sandbox
+          image: {{ .Values.image.repositories.sandbox }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-credentials
+                  key: code_execute_key
+            - name: GIN_MODE
+              value: release
+            - name: WORKER_TIMEOUT
+              value: '15'
+            - name: ENABLE_NETWORK
+              value: "true"
+            - name: SANDBOX_PORT
+              value: "8194"
+            # uncomment if you want to use proxy
+            # - name: HTTP_PROXY
+            #   value: 'http://ssrf-proxy:3128'
+            # - name: HTTPS_PROXY
+            #   value: 'http://ssrf-proxy:3128'
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          ports:
+            - containerPort: 8194
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-sandbox
+  namespace: dify
+spec:
+  ports:
+    - port: 8194
+      targetPort: 8194
+      protocol: TCP
+      name: dify-sandbox
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: dify-sandbox
